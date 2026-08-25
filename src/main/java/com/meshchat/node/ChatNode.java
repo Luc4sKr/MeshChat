@@ -2,6 +2,7 @@ package com.meshchat.node;
 
 import com.meshchat.config.NodeConfig;
 import com.meshchat.config.PeerAddress;
+import com.meshchat.console.ConsoleInput;
 import com.meshchat.peer.PeerConnection;
 import com.meshchat.peer.PeerConnectionListener;
 import com.meshchat.peer.PeerRegistry;
@@ -24,13 +25,17 @@ public final class ChatNode implements PeerConnectionListener {
     private static final Duration CONNECT_RETRY_DELAY = Duration.ofSeconds(3);
 
     private final NodeConfig config;
+    private final ConsoleInput consoleInput;
+
     private final PeerRegistry registry = new PeerRegistry();
     private final ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
+
     private volatile boolean running = true;
     private java.net.ServerSocket serverSocket;
 
     public ChatNode(NodeConfig config) {
         this.config = config;
+        this.consoleInput = new ConsoleInput(this::handleConsoleCommand);
     }
 
     public void start() throws IOException {
@@ -46,7 +51,11 @@ public final class ChatNode implements PeerConnectionListener {
             }
         }
 
-        runConsoleLoop();
+        consoleInput.run();
+
+        if (running) {
+            quit();
+        }
     }
 
     // ---------------------------------------------------------------- accept
@@ -130,23 +139,6 @@ public final class ChatNode implements PeerConnectionListener {
         if (nickname != null) {
             registry.remove(connection);
             console("* " + nickname + " disconnected");
-        }
-    }
-
-    // ------------------------------------------------------------- console
-
-    private void runConsoleLoop() throws IOException {
-        try (BufferedReader reader = new BufferedReader(new InputStreamReader(System.in))) {
-            String line;
-            while (running && (line = reader.readLine()) != null) {
-                handleConsoleCommand(ConsoleCommand.parse(line));
-            }
-            // EOF on stdin (redirected/piped input closed, Ctrl+D, ...) is
-            // treated the same as an explicit /quit so peers are notified
-            // instead of this node vanishing without a LEAVE announcement.
-            if (running) {
-                quit();
-            }
         }
     }
 
