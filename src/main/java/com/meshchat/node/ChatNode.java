@@ -7,10 +7,9 @@ import com.meshchat.peer.PeerConnection;
 import com.meshchat.peer.PeerConnectionListener;
 import com.meshchat.peer.PeerRegistry;
 import com.meshchat.protocol.Message;
+import com.meshchat.service.ChatService;
 
-import java.io.BufferedReader;
 import java.io.IOException;
-import java.io.InputStreamReader;
 import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.net.SocketException;
@@ -26,6 +25,7 @@ public final class ChatNode implements PeerConnectionListener {
 
     private final NodeConfig config;
     private final ConsoleInput consoleInput;
+    private final ChatService chatService;
 
     private final PeerRegistry registry = new PeerRegistry();
     private final ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
@@ -35,7 +35,15 @@ public final class ChatNode implements PeerConnectionListener {
 
     public ChatNode(NodeConfig config) {
         this.config = config;
-        this.consoleInput = new ConsoleInput(this::handleConsoleCommand);
+
+        this.chatService = new ChatService(
+                config.nickname(),
+                registry,
+                this::shutdown
+        );
+
+        this.consoleInput =
+                new ConsoleInput(chatService);
     }
 
     public void start() throws IOException {
@@ -54,7 +62,7 @@ public final class ChatNode implements PeerConnectionListener {
         consoleInput.run();
 
         if (running) {
-            quit();
+            shutdown();
         }
     }
 
@@ -140,47 +148,6 @@ public final class ChatNode implements PeerConnectionListener {
             registry.remove(connection);
             console("* " + nickname + " disconnected");
         }
-    }
-
-    private void handleConsoleCommand(ConsoleCommand command) {
-        switch (command) {
-            case ConsoleCommand.Broadcast b -> broadcast(new Message.ChatMessage(config.nickname(), b.text()));
-            case ConsoleCommand.PrivateMsg pm -> sendPrivate(pm.recipient(), pm.text());
-            case ConsoleCommand.ListPeers ignored -> printParticipants();
-            case ConsoleCommand.Quit ignored -> quit();
-            case ConsoleCommand.Invalid invalid -> console(invalid.reason());
-            case ConsoleCommand.Empty ignored -> {
-                // Nothing to do.
-            }
-        }
-    }
-
-    private void broadcast(Message message) {
-        for (PeerConnection connection : registry.all()) {
-            connection.send(message);
-        }
-    }
-
-    private void sendPrivate(String recipient, String text) {
-        registry.find(recipient)
-                .ifPresentOrElse(
-                        connection -> connection.send(new Message.PrivateMessage(config.nickname(), recipient, text)),
-                        () -> console("Unknown participant: " + recipient));
-    }
-
-    private void printParticipants() {
-        var nicknames = registry.nicknames();
-        if (nicknames.isEmpty()) {
-            console("No other participants known.");
-        } else {
-            console("Known participants: " + String.join(", ", nicknames));
-        }
-    }
-
-    private void quit() {
-        console("Leaving the chat...");
-        broadcast(new Message.LeaveMessage(config.nickname()));
-        shutdown();
     }
 
     // ------------------------------------------------------------- lifecycle
