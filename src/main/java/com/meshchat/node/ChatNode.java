@@ -8,11 +8,11 @@ import com.meshchat.peer.PeerConnectionListener;
 import com.meshchat.peer.PeerRegistry;
 import com.meshchat.protocol.Message;
 import com.meshchat.service.ChatService;
+import com.meshchat.server.PeerServer;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.Socket;
-import java.net.SocketException;
 import java.time.Duration;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -26,12 +26,12 @@ public final class ChatNode implements PeerConnectionListener {
     private final NodeConfig config;
     private final ConsoleInput consoleInput;
     private final ChatService chatService;
+    private final PeerServer peerServer;
 
     private final PeerRegistry registry = new PeerRegistry();
     private final ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
 
     private volatile boolean running = true;
-    private java.net.ServerSocket serverSocket;
 
     public ChatNode(NodeConfig config) {
         this.config = config;
@@ -42,20 +42,37 @@ public final class ChatNode implements PeerConnectionListener {
                 this::shutdown
         );
 
-        this.consoleInput =
-                new ConsoleInput(chatService);
+        this.consoleInput = new ConsoleInput(chatService);
+
+        this.peerServer = new PeerServer(
+                config.port(),
+                this::onSocketEstablished,
+                executor
+        );
     }
 
     public void start() throws IOException {
-        serverSocket = new java.net.ServerSocket(config.port());
-        console("Listening on %s:%d as '%s'".formatted(config.host(), config.port(), config.nickname()));
+        peerServer.start();
 
-        executor.submit(this::acceptLoop);
+        console(
+                "Listening on %s:%d as '%s'"
+                        .formatted(
+                                config.host(),
+                                config.port(),
+                                config.nickname()
+                        )
+        );
 
         PeerAddress self = config.selfAddress();
+
         for (PeerAddress peer : config.knownPeers()) {
             if (self.compareTo(peer) < 0) {
-                executor.submit(() -> connectToPeer(peer, CONNECT_MAX_RETRIES));
+                executor.submit(
+                        () -> connectToPeer(
+                                peer,
+                                CONNECT_MAX_RETRIES
+                        )
+                );
             }
         }
 
@@ -63,24 +80,6 @@ public final class ChatNode implements PeerConnectionListener {
 
         if (running) {
             shutdown();
-        }
-    }
-
-    // ---------------------------------------------------------------- accept
-
-    private void acceptLoop() {
-        while (running) {
-            try {
-                Socket socket = serverSocket.accept();
-                executor.submit(() -> onSocketEstablished(socket));
-            } catch (SocketException e) {
-                if (running) {
-                    console("Accept loop stopped unexpectedly: " + e.getMessage());
-                }
-                return; // serverSocket was closed as part of shutdown()
-            } catch (IOException e) {
-                console("Failed to accept connection: " + e.getMessage());
-            }
         }
     }
 
@@ -154,16 +153,13 @@ public final class ChatNode implements PeerConnectionListener {
 
     private void shutdown() {
         running = false;
+
         for (PeerConnection connection : registry.all()) {
             connection.close();
         }
-        try {
-            if (serverSocket != null) {
-                serverSocket.close();
-            }
-        } catch (IOException ignored) {
-            // Closing on shutdown; nothing to react to.
-        }
+
+        peerServer.close();
+
         executor.shutdownNow();
     }
 
