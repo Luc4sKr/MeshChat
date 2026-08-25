@@ -6,9 +6,8 @@ import com.meshchat.connection.ConnectionManager;
 import com.meshchat.connection.PeerConnector;
 import com.meshchat.console.ConsoleInput;
 import com.meshchat.peer.PeerConnection;
-import com.meshchat.peer.PeerConnectionListener;
+import com.meshchat.peer.PeerEventHandler;
 import com.meshchat.peer.PeerRegistry;
-import com.meshchat.protocol.Message;
 import com.meshchat.service.ChatService;
 import com.meshchat.server.PeerServer;
 
@@ -18,7 +17,7 @@ import java.time.Duration;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-public final class ChatNode implements PeerConnectionListener {
+public final class ChatNode {
 
     private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(5);
     private static final int CONNECT_MAX_RETRIES = 5;
@@ -30,6 +29,7 @@ public final class ChatNode implements PeerConnectionListener {
     private final PeerServer peerServer;
     private final PeerConnector peerConnector;
     private final ConnectionManager connectionManager;
+    private final PeerEventHandler peerEventHandler;
 
     private final PeerRegistry registry = new PeerRegistry();
     private final ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
@@ -39,18 +39,24 @@ public final class ChatNode implements PeerConnectionListener {
     public ChatNode(NodeConfig config) {
         this.config = config;
 
+        this.peerEventHandler = new PeerEventHandler(
+                registry
+        );
+
         this.chatService = new ChatService(
                 config.nickname(),
                 registry,
                 this::shutdown
         );
 
-        this.consoleInput = new ConsoleInput(chatService);
+        this.consoleInput = new ConsoleInput(
+                chatService
+        );
 
         this.connectionManager = new ConnectionManager(
                 config.nickname(),
                 config.port(),
-                this
+                peerEventHandler
         );
 
         this.peerServer = new PeerServer(
@@ -93,8 +99,6 @@ public final class ChatNode implements PeerConnectionListener {
         }
     }
 
-    // --------------------------------------------------------------- connect
-
     private void connectToPeer(PeerAddress peer) {
         try {
             Socket socket = peerConnector.connect(peer);
@@ -111,47 +115,6 @@ public final class ChatNode implements PeerConnectionListener {
             );
         }
     }
-
-    // --------------------------------------------------------- message events
-
-    @Override
-    public void onMessage(PeerConnection connection, Message message) {
-        switch (message) {
-            case Message.JoinMessage join -> {
-                boolean isNew = !registry.isKnown(join.nickname());
-                connection.setNickname(join.nickname());
-                registry.register(join.nickname(), connection);
-                if (isNew) {
-                    console("* " + join.nickname() + " joined the chat");
-                }
-            }
-            case Message.LeaveMessage leave -> {
-                registry.remove(leave.nickname());
-                console("* " + leave.nickname() + " left the chat");
-                // Clear the nickname first so the close() below (triggered by
-                // this voluntary LEAVE) doesn't also fire a redundant
-                // "disconnected" announcement from onDisconnect().
-                connection.setNickname(null);
-                connection.close();
-            }
-            case Message.ChatMessage chat -> console(chat.sender() + ": " + chat.text());
-            case Message.PrivateMessage pm -> console("(private) " + pm.sender() + ": " + pm.text());
-            case Message.HeartbeatMessage ignored -> {
-                // Keep-alive only; no application-level action needed.
-            }
-        }
-    }
-
-    @Override
-    public void onDisconnect(PeerConnection connection) {
-        String nickname = connection.nickname();
-        if (nickname != null) {
-            registry.remove(connection);
-            console("* " + nickname + " disconnected");
-        }
-    }
-
-    // ------------------------------------------------------------- lifecycle
 
     private void shutdown() {
         running = false;
