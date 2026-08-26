@@ -1,7 +1,7 @@
 package com.meshchat.service;
 
 import com.meshchat.console.ConsoleCommandHandler;
-import com.meshchat.node.ConsoleCommand;
+import com.meshchat.console.ConsoleCommand;
 import com.meshchat.peer.PeerConnection;
 import com.meshchat.peer.PeerRegistry;
 import com.meshchat.protocol.Message;

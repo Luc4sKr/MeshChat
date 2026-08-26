@@ -1,7 +1,5 @@
 package com.meshchat.console;
 
-import com.meshchat.node.ConsoleCommand;
-
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
