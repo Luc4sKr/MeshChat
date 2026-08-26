@@ -6,6 +6,7 @@ import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.nio.charset.StandardCharsets;
 
 public final class MessageCodec {
 
@@ -18,23 +19,23 @@ public final class MessageCodec {
             switch (message) {
                 case Message.JoinMessage m -> {
                     out.writeByte(MessageType.JOIN.code());
-                    out.writeUTF(m.nickname());
+                    writeString(out, m.nickname());
                     out.writeInt(m.listenPort());
                 }
                 case Message.LeaveMessage m -> {
                     out.writeByte(MessageType.LEAVE.code());
-                    out.writeUTF(m.nickname());
+                    writeString(out, m.nickname());
                 }
                 case Message.ChatMessage m -> {
                     out.writeByte(MessageType.CHAT.code());
-                    out.writeUTF(m.sender());
-                    out.writeUTF(m.text());
+                    writeString(out, m.sender());
+                    writeString(out, m.text());
                 }
                 case Message.PrivateMessage m -> {
                     out.writeByte(MessageType.PRIVATE.code());
-                    out.writeUTF(m.sender());
-                    out.writeUTF(m.recipient());
-                    out.writeUTF(m.text());
+                    writeString(out, m.sender());
+                    writeString(out, m.recipient());
+                    writeString(out, m.text());
                 }
                 case Message.HeartbeatMessage m -> out.writeByte(MessageType.HEARTBEAT.code());
             }
@@ -49,12 +50,28 @@ public final class MessageCodec {
         try (var in = new DataInputStream(new ByteArrayInputStream(payload))) {
             MessageType type = MessageType.fromCode(in.readByte());
             return switch (type) {
-                case JOIN -> new Message.JoinMessage(in.readUTF(), in.readInt());
-                case LEAVE -> new Message.LeaveMessage(in.readUTF());
-                case CHAT -> new Message.ChatMessage(in.readUTF(), in.readUTF());
-                case PRIVATE -> new Message.PrivateMessage(in.readUTF(), in.readUTF(), in.readUTF());
+                case JOIN -> new Message.JoinMessage(readString(in), in.readInt());
+                case LEAVE -> new Message.LeaveMessage(readString(in));
+                case CHAT -> new Message.ChatMessage(readString(in), readString(in));
+                case PRIVATE -> new Message.PrivateMessage(readString(in), readString(in), readString(in));
                 case HEARTBEAT -> new Message.HeartbeatMessage();
             };
         }
+    }
+
+    private static void writeString(DataOutputStream out, String value) throws IOException {
+        byte[] bytes = value.getBytes(StandardCharsets.UTF_8);
+        out.writeInt(bytes.length);
+        out.write(bytes);
+    }
+
+    private static String readString(DataInputStream in) throws IOException {
+        int length = in.readInt();
+        if (length < 0) {
+            throw new IOException("Invalid string length: " + length);
+        }
+        byte[] bytes = new byte[length];
+        in.readFully(bytes);
+        return new String(bytes, StandardCharsets.UTF_8);
     }
 }

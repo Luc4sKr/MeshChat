@@ -111,6 +111,7 @@ public final class PeerConnection {
 
     public void close() {
         if (closed.compareAndSet(false, true)) {
+            drainPendingOutbound();
             readerThread.interrupt();
             writerThread.interrupt();
             heartbeatThread.interrupt();
@@ -120,6 +121,20 @@ public final class PeerConnection {
                 // Nothing meaningful to do if closing the socket fails.
             }
             listener.onDisconnect(this);
+        }
+    }
+
+    private static final Duration CLOSE_DRAIN_TIMEOUT = Duration.ofMillis(500);
+
+    private void drainPendingOutbound() {
+        long deadline = System.currentTimeMillis() + CLOSE_DRAIN_TIMEOUT.toMillis();
+        while (!outboundQueue.isEmpty() && System.currentTimeMillis() < deadline) {
+            try {
+                Thread.sleep(10);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return;
+            }
         }
     }
 

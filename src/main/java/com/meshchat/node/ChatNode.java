@@ -126,6 +126,7 @@ public final class ChatNode {
         peerServer.close();
 
         executor.shutdownNow();
+        System.exit(0);
     }
 
     private void console(String text) {
