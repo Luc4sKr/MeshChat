@@ -1,27 +1,32 @@
 package com.meshchat.service;
 
-import com.meshchat.console.ConsoleCommandHandler;
 import com.meshchat.console.ConsoleCommand;
+import com.meshchat.console.ConsoleCommandHandler;
 import com.meshchat.peer.PeerConnection;
 import com.meshchat.peer.PeerRegistry;
 import com.meshchat.protocol.Message;
-
+import java.util.LinkedHashSet;
 import java.util.Objects;
+import java.util.UUID;
+import java.util.function.Consumer;
 
 public final class ChatService implements ConsoleCommandHandler {
 
     private final String nickname;
     private final PeerRegistry peerRegistry;
     private final Runnable quitHandler;
+    private final Consumer<String> seenChatMessageTracker;
 
     public ChatService(
             String nickname,
             PeerRegistry peerRegistry,
-            Runnable quitHandler
+            Runnable quitHandler,
+            Consumer<String> seenChatMessageTracker
     ) {
         this.nickname = Objects.requireNonNull(nickname);
         this.peerRegistry = Objects.requireNonNull(peerRegistry);
         this.quitHandler = Objects.requireNonNull(quitHandler);
+        this.seenChatMessageTracker = Objects.requireNonNull(seenChatMessageTracker);
     }
 
     @Override
@@ -37,7 +42,7 @@ public final class ChatService implements ConsoleCommandHandler {
                     );
 
             case ConsoleCommand.ListPeers ignored ->
-                    printParticipants();
+                    listPeers();
 
             case ConsoleCommand.Quit ignored ->
                     quit();
@@ -52,10 +57,11 @@ public final class ChatService implements ConsoleCommandHandler {
     }
 
     private void broadcast(String text) {
-        Message message = new Message.ChatMessage(
+        Message.ChatMessage message = new Message.ChatMessage(
                 nickname,
                 text
         );
+        seenChatMessageTracker.accept(message.messageId());
 
         for (PeerConnection connection : peerRegistry.all()) {
             connection.send(message);
@@ -66,19 +72,44 @@ public final class ChatService implements ConsoleCommandHandler {
             String recipient,
             String text
     ) {
-        peerRegistry.find(recipient)
-                .ifPresentOrElse(
-                        connection -> connection.send(
-                                new Message.PrivateMessage(
-                                        nickname,
-                                        recipient,
-                                        text
-                                )
-                        ),
-                        () -> console(
-                                "Unknown participant: " + recipient
-                        )
-                );
+        Message.PrivateMessage message = new Message.PrivateMessage(
+                nickname,
+                recipient,
+                text,
+                java.util.List.of(nickname)
+        );
+
+        var directConnection = peerRegistry.find(recipient);
+        if (directConnection.isPresent()) {
+            directConnection.get().send(message);
+            return;
+        }
+
+        if (peerRegistry.all().isEmpty()) {
+            console("Unknown participant: " + recipient);
+            return;
+        }
+
+        for (PeerConnection connection : peerRegistry.all()) {
+            connection.send(message);
+        }
+    }
+
+    private void listPeers() {
+        printParticipants();
+
+        var discoveredNodes = new LinkedHashSet<String>(peerRegistry.nicknames());
+        discoveredNodes.add(nickname);
+
+        Message listRequest = new Message.ListRequestMessage(
+                nickname,
+                UUID.randomUUID().toString(),
+                discoveredNodes
+        );
+
+        for (PeerConnection connection : peerRegistry.all()) {
+            connection.send(listRequest);
+        }
     }
 
     private void printParticipants() {

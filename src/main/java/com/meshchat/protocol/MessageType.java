@@ -6,7 +6,8 @@ public enum MessageType {
     LEAVE((byte) 2),
     CHAT((byte) 3),
     PRIVATE((byte) 4),
-    HEARTBEAT((byte) 5);
+    HEARTBEAT((byte) 5),
+    LIST_REQUEST((byte) 6);
 
     private final byte code;
 

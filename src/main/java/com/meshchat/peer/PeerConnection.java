@@ -3,7 +3,6 @@ package com.meshchat.peer;
 import com.meshchat.net.FrameCodec;
 import com.meshchat.protocol.Message;
 import com.meshchat.protocol.MessageCodec;
-
 import java.io.BufferedOutputStream;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
@@ -32,6 +31,8 @@ public final class PeerConnection {
     private final BlockingQueue<Message> outboundQueue = new LinkedBlockingQueue<>(OUTBOUND_QUEUE_CAPACITY);
     private final AtomicBoolean closed = new AtomicBoolean(false);
     private final AtomicReference<String> nickname = new AtomicReference<>();
+    private final AtomicReference<String> knownRemoteHost = new AtomicReference<>();
+    private final AtomicReference<Integer> knownRemoteListenPort = new AtomicReference<>();
 
     private Thread readerThread;
     private Thread writerThread;
@@ -150,7 +151,33 @@ public final class PeerConnection {
         nickname.set(value);
     }
 
+    public void rememberRemotePeer(String host, int listenPort) {
+        knownRemoteHost.set(host);
+        knownRemoteListenPort.set(listenPort);
+    }
+
+    public boolean samePeerAs(PeerConnection other) {
+        if (other == null || other == this) {
+            return other == this;
+        }
+
+        String hostA = knownRemoteHost.get();
+        Integer portA = knownRemoteListenPort.get();
+        String hostB = other.knownRemoteHost.get();
+        Integer portB = other.knownRemoteListenPort.get();
+
+        if (hostA != null && hostB != null && portA != null && portB != null) {
+            return hostA.equals(hostB) && portA.equals(portB);
+        }
+
+        return false;
+    }
+
     public String remoteAddress() {
         return socket.getRemoteSocketAddress().toString();
+    }
+
+    public String remoteHost() {
+        return socket.getInetAddress().getHostAddress();
     }
 }

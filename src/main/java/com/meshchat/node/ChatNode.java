@@ -8,9 +8,8 @@ import com.meshchat.console.ConsoleInput;
 import com.meshchat.peer.PeerConnection;
 import com.meshchat.peer.PeerEventHandler;
 import com.meshchat.peer.PeerRegistry;
-import com.meshchat.service.ChatService;
 import com.meshchat.server.PeerServer;
-
+import com.meshchat.service.ChatService;
 import java.io.IOException;
 import java.net.Socket;
 import java.time.Duration;
@@ -25,11 +24,9 @@ public final class ChatNode {
 
     private final NodeConfig config;
     private final ConsoleInput consoleInput;
-    private final ChatService chatService;
     private final PeerServer peerServer;
     private final PeerConnector peerConnector;
     private final ConnectionManager connectionManager;
-    private final PeerEventHandler peerEventHandler;
 
     private final PeerRegistry registry = new PeerRegistry();
     private final ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
@@ -39,14 +36,17 @@ public final class ChatNode {
     public ChatNode(NodeConfig config) {
         this.config = config;
 
-        this.peerEventHandler = new PeerEventHandler(
-                registry
+        var peerEventHandler = new PeerEventHandler(
+                registry,
+                this::connectToPeer,
+                config.nickname()
         );
 
-        this.chatService = new ChatService(
+        var chatService = new ChatService(
                 config.nickname(),
                 registry,
-                this::shutdown
+                this::shutdown,
+                peerEventHandler::rememberSeenChatMessage
         );
 
         this.consoleInput = new ConsoleInput(
