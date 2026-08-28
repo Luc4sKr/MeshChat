@@ -63,7 +63,14 @@ public final class PeerEventHandler implements PeerConnectionListener {
         peerRegistry.remove(connection);
         peerRegistry.remove(nickname);
 
-        console("* " + nickname + " disconnected");
+        console("* " + nickname + " left the chat");
+
+        Message message =
+                new Message.LeaveMessage(nickname);
+
+        for (PeerConnection conn : peerRegistry.all()) {
+            conn.send(message);
+        }
     }
 
     private void handleJoin(
