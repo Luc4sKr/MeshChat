@@ -61,6 +61,7 @@ public final class PeerEventHandler implements PeerConnectionListener {
         }
 
         peerRegistry.remove(connection);
+        peerRegistry.remove(nickname);
 
         console("* " + nickname + " disconnected");
     }

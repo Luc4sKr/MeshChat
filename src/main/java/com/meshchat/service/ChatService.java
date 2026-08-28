@@ -96,23 +96,6 @@ public final class ChatService implements ConsoleCommandHandler {
     }
 
     private void listPeers() {
-        printParticipants();
-
-        var discoveredNodes = new LinkedHashSet<String>(peerRegistry.nicknames());
-        discoveredNodes.add(nickname);
-
-        Message listRequest = new Message.ListRequestMessage(
-                nickname,
-                UUID.randomUUID().toString(),
-                discoveredNodes
-        );
-
-        for (PeerConnection connection : peerRegistry.all()) {
-            connection.send(listRequest);
-        }
-    }
-
-    private void printParticipants() {
         var nicknames = peerRegistry.nicknames();
 
         if (nicknames.isEmpty()) {
@@ -125,6 +108,7 @@ public final class ChatService implements ConsoleCommandHandler {
                         + String.join(", ", nicknames)
         );
     }
+
 
     private void quit() {
         console("Leaving the chat...");
